@@ -3,7 +3,7 @@ import re
 import openai
 import os
 
-# Step 1: PDF Text Extraction (from Step 1)
+# Step 1: PDF Text Extraction
 def extract_text_from_pdf(pdf_path):
     # Open the provided PDF file
     doc = fitz.open(pdf_path)
@@ -16,7 +16,7 @@ def extract_text_from_pdf(pdf_path):
     
     return text
 
-# Step 2: Text Preprocessing and Organization (from Step 2)
+# Step 2: Text Preprocessing and Organization
 
 # Clean text: remove unwanted content like page numbers, headers, and footers
 def clean_text(text):
@@ -43,7 +43,7 @@ def segment_text_by_headings(text):
     
     return sections
 
-# Summarize each section using OpenAI's GPT (or another summarizer)
+# Summarize each section using OpenAI's GPT
 def summarize_section(text):
     openai.api_key = os.getenv("OPENAI_API_KEY")
     if not openai.api_key:
@@ -51,7 +51,7 @@ def summarize_section(text):
     
     # Correct API call for v1/chat/completions endpoint
     response = openai.chat.completions.create(
-        model="gpt-4",  # Ensure the correct model name is used, you can use gpt-3.5-turbo or gpt-4
+        model="gpt-4", 
         messages=[
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": f"Please summarize the following content: {text}"}
@@ -64,14 +64,42 @@ def summarize_section(text):
     content = response.choices[0].message.content.strip()  # Corrected access pattern
     return content
 
-def summarize_sections(sections):
-    summaries = []
-    for section in sections:
-        summary = summarize_section(section)
-        summaries.append(summary)
-    return summaries
+# Generate questions based on the summary of each section
+def generate_questions_from_summary(summary):
+    openai.api_key = os.getenv("OPENAI_API_KEY")
+    if not openai.api_key:
+        raise ValueError("OpenAI API key not found. Please set the OPENAI_API_KEY environment variable.")
+    
+    # Request questions based on the summary
+    response = openai.chat.completions.create(
+        model="gpt-4",  # You can also use gpt-3.5-turbo
+        messages=[
+            {"role": "system", "content": "You are a helpful assistant."},
+            {"role": "user", "content": f"Based on the following summary, generate 5 questions for review: {summary}"}
+        ],
+        max_tokens=300,  # You can adjust this number for longer or shorter responses
+        temperature=0.7
+    )
+    
+    # Extract and return the generated questions
+    questions = response.choices[0].message.content.strip()
+    return questions
 
-# Step 3: Combine Extraction, Preprocessing, Summarization, and Keyword Extraction
+# Summarize sections and generate questions for each section
+def summarize_and_generate_questions(sections):
+    summaries = []
+    questions = []
+    
+    for section in sections:
+        summary = summarize_section(section)  # Summarize the section
+        summaries.append(summary)
+        questions_for_section = generate_questions_from_summary(summary)  # Generate questions based on the summary
+        questions.append(questions_for_section)
+    
+    return summaries, questions
+
+
+# Step 3: Combine Extraction, Preprocessing, Summarization and Question Generation
 def preprocess_pdf_text(pdf_path):
     # Step 1: Extract text from the PDF
     pdf_text = extract_text_from_pdf(pdf_path)
@@ -82,10 +110,10 @@ def preprocess_pdf_text(pdf_path):
     # Step 3: Segment the text into sections
     sections = segment_text_by_headings(cleaned_text)
     
-    # Step 4: Summarize each section
-    summaries = summarize_sections(sections)
+    # Step 4: Summarize each section and generate questions
+    summaries, questions = summarize_and_generate_questions(sections)
     
-    return summaries
+    return summaries, questions
 
 # Main function to prompt the user for a file path and execute the steps
 def main():
@@ -96,9 +124,13 @@ def main():
     try:
         with open(pdf_path, 'rb'):  # Open the file in binary mode to check its existence
             print(f"Extracting and processing text from: {pdf_path}")
-            summaries = preprocess_pdf_text(pdf_path)
+            summaries, questions = preprocess_pdf_text(pdf_path)
+            
             for idx, summary in enumerate(summaries):
-                print(f"\nSection {idx+1} Summary: \n{summary}")
+                print(f"\nSection {idx+1} Summary:\n{summary}")
+            
+            for idx, question_set in enumerate(questions):
+                print(f"\nQuestions for Section {idx+1}:\n{question_set}")
             
     except FileNotFoundError:
         print(f"Error: The file at {pdf_path} was not found. Please check the path and try again.")
