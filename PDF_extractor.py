@@ -28,30 +28,15 @@ def clean_text(text):
 
     return text
 
-# Segment the text into sections based on detected headings or subheadings
-def segment_text_by_headings(text):
-    sections = []
-    
-    # Regular expression for detecting "Chapter" or "Section" or any heading-like patterns
-    # Adjust the regex to match patterns like Chapter X, Section Y, etc.
-    split_sections = re.split(r'(?=\n(?:Chapter \d+|Section \d+))', text)  # Look ahead for "Chapter X" or "Section X"
-    
-    for section in split_sections:
-        section = section.strip()
-        if section:
-            sections.append(section)
-    
-    return sections
-
-# Summarize each section using OpenAI's GPT
-def summarize_section(text):
+# Summarize each section using OpenAI's GPT (or another summarizer)
+def summarize_text(text):
     openai.api_key = os.getenv("OPENAI_API_KEY")
     if not openai.api_key:
         raise ValueError("OpenAI API key not found. Please set the OPENAI_API_KEY environment variable.")
     
     # Correct API call for v1/chat/completions endpoint
     response = openai.chat.completions.create(
-        model="gpt-4", 
+        model="gpt-4",  # Ensure the correct model name is used, you can use gpt-3.5-turbo or gpt-4
         messages=[
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": f"Please summarize the following content: {text}"}
@@ -60,7 +45,7 @@ def summarize_section(text):
         temperature=0.7  # Controls the randomness of the response
     )
     
-    # Correct way to extract summary content from the response
+    # Extract and return the summary content
     content = response.choices[0].message.content.strip()  # Corrected access pattern
     return content
 
@@ -85,52 +70,49 @@ def generate_questions_from_summary(summary):
     questions = response.choices[0].message.content.strip()
     return questions
 
-# Summarize sections and generate questions for each section
-def summarize_and_generate_questions(sections):
-    summaries = []
-    questions = []
-    
-    for section in sections:
-        summary = summarize_section(section)  # Summarize the section
-        summaries.append(summary)
-        questions_for_section = generate_questions_from_summary(summary)  # Generate questions based on the summary
-        questions.append(questions_for_section)
-    
-    return summaries, questions
-
-
-# Step 3: Combine Extraction, Preprocessing, Summarization and Question Generation
-def preprocess_pdf_text(pdf_path):
+# Process the entire document: summarize and generate questions
+def process_pdf_text(pdf_path):
     # Step 1: Extract text from the PDF
     pdf_text = extract_text_from_pdf(pdf_path)
     
     # Step 2: Clean and preprocess the text
     cleaned_text = clean_text(pdf_text)
     
-    # Step 3: Segment the text into sections
-    sections = segment_text_by_headings(cleaned_text)
+    # Step 3: Summarize the entire content
+    summary = summarize_text(cleaned_text)
     
-    # Step 4: Summarize each section and generate questions
-    summaries, questions = summarize_and_generate_questions(sections)
+    # Step 4: Generate questions based on the summary
+    questions = generate_questions_from_summary(summary)
     
-    return summaries, questions
+    return summary, questions
 
 # Main function to prompt the user for a file path and execute the steps
 def main():
     # Ask the user to input the file path for the PDF
-    pdf_path = input("Please enter the file path of the PDF: ")
+    pdf_path = input("Please enter the file path of the PDF (ensure it is less than 5 pages): ")
+
+    # Validate the file path and check if it is a PDF
+    if not pdf_path.endswith('.pdf'):
+        print("Error: The file must be a PDF. Please provide a valid PDF file.")
+        pdf_path = input("Please enter the file path of the PDF (ensure it is less than 5 pages): ")
+    if fitz.open(pdf_path).page_count > 5:
+        print("Error: The PDF file exceeds 5 pages. Please provide a PDF with 5 or fewer pages.")
+        pdf_path = input("Please enter the file path of the PDF (ensure it is less than 5 pages): ")
+    if not os.path.exists(pdf_path):
+        print("Error: The file does not exist. Please check the path and try again.")
+        pdf_path = input("Please enter the file path of the PDF (ensure it is less than 5 pages): ")
     
     # Check if the file exists and process it
     try:
         with open(pdf_path, 'rb'):  # Open the file in binary mode to check its existence
             print(f"Extracting and processing text from: {pdf_path}")
-            summaries, questions = preprocess_pdf_text(pdf_path)
+            summary, questions = process_pdf_text(pdf_path)
             
-            for idx, summary in enumerate(summaries):
-                print(f"\nSection {idx+1} Summary:\n{summary}")
+            print("\nSummary of the document:\n")
+            print(summary)
             
-            for idx, question_set in enumerate(questions):
-                print(f"\nQuestions for Section {idx+1}:\n{question_set}")
+            print("\nGenerated Questions for the document:\n")
+            print(questions)
             
     except FileNotFoundError:
         print(f"Error: The file at {pdf_path} was not found. Please check the path and try again.")
