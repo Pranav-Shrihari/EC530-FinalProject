@@ -95,12 +95,16 @@ def main():
     if not pdf_path.endswith('.pdf'):
         print("Error: The file must be a PDF. Please provide a valid PDF file.")
         pdf_path = input("Please enter the file path of the PDF (ensure it is less than 5 pages): ")
-    if fitz.open(pdf_path).page_count > 5:
-        print("Error: The PDF file exceeds 5 pages. Please provide a PDF with 5 or fewer pages.")
-        pdf_path = input("Please enter the file path of the PDF (ensure it is less than 5 pages): ")
-    if not os.path.exists(pdf_path):
-        print("Error: The file does not exist. Please check the path and try again.")
-        pdf_path = input("Please enter the file path of the PDF (ensure it is less than 5 pages): ")
+    
+    # Check if the file exists and is under 5 pages
+    try:
+        pdf_doc = fitz.open(pdf_path)
+        if pdf_doc.page_count > 5:
+            print("Error: The PDF file exceeds 5 pages. Please provide a PDF with 5 or fewer pages.")
+            return
+    except Exception as e:
+        print(f"Error: The file at {pdf_path} could not be opened. Please check the path and try again.")
+        return
     
     # Check if the file exists and process it
     try:
