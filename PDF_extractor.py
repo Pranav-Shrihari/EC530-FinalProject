@@ -139,20 +139,31 @@ def main():
     # Process the file based on the user's choice
     try:
         with open(pdf_path, 'rb'):  # Open the file in binary mode to check its existence
-            print(f"Extracting and processing text from: {pdf_path}")
             
             summary, questions = process_pdf_text(pdf_path)
             
             if user_choice == 'summary':
                 print("\nSummary of the document:\n")
                 print(summary)
+                add_questions = input("\nDo you want to generate questions based on the summary? (yes/no): ").strip().lower()
+                if add_questions == 'yes':
+                    print("\nGenerated Questions for the summary:")
+                    # Ask each question one by one
+                    for idx, question in enumerate(questions.split('\n')):
+                        print(f"\nQuestion {question}")
+                        user_answer = input("Your answer: ").strip()
+                        feedback = grade_answer(question, user_answer)
+                        print("\nAI Feedback:\n", feedback)
+                else:
+                    print("\nNo questions generated, have a nice day!\n")
+
             
             elif user_choice == 'questions':
-                print("\nGenerated Questions for the document:\n")
+                print("\nGenerated Questions for the document:")
                 
                 # Ask each question one by one
                 for idx, question in enumerate(questions.split('\n')):
-                    print(f"Question {idx + 1}: {question}")
+                    print(f"\nQuestion {question}")
                     user_answer = input("Your answer: ").strip()
                     feedback = grade_answer(question, user_answer)
                     print("\nAI Feedback:\n", feedback)
