@@ -28,7 +28,9 @@ def clean_text(text):
 
     return text
 
-# Summarize each section using OpenAI's GPT (or another summarizer)
+# Step 3: Summary Generation using AI
+
+# Summarize the entire content using OpenAI's GPT (or another summarizer)
 def summarize_text(text):
     openai.api_key = os.getenv("OPENAI_API_KEY")
     if not openai.api_key:
@@ -46,10 +48,12 @@ def summarize_text(text):
     )
     
     # Extract and return the summary content
-    content = response.choices[0].message.content.strip()  # Corrected access pattern
+    content = response.choices[0].message.content.strip()
     return content
 
-# Generate questions based on the summary of each section
+# Step 4: Question Generation using AI
+
+# Generate questions based on the summary of the entire text
 def generate_questions_from_summary(summary):
     openai.api_key = os.getenv("OPENAI_API_KEY")
     if not openai.api_key:
@@ -86,6 +90,29 @@ def process_pdf_text(pdf_path):
     
     return summary, questions
 
+# Step 5: Grading User's Response using AI
+
+# Function to grade the user's response using AI
+def grade_answer(question, user_answer, max_points = 10):
+    openai.api_key = os.getenv("OPENAI_API_KEY")
+    if not openai.api_key:
+        raise ValueError("OpenAI API key not found. Please set the OPENAI_API_KEY environment variable.")
+    
+    # Request grading feedback based on the user's answer
+    response = openai.chat.completions.create(
+        model="gpt-4",  # You can also use gpt-3.5-turbo
+        messages=[
+            {"role": "system", "content": "You are a grading assistant."},
+            {"role": "user", "content": f"Question: {question}\nUser Answer: {user_answer}\nGrade the answer out of {max_points} points and provide feedback with an example answer."}
+        ],
+        max_tokens=200,  # You can adjust this number for longer or shorter responses
+        temperature=0.7
+    )
+    
+    # Extract and return the feedback
+    feedback = response.choices[0].message.content.strip()
+    return feedback
+
 # Main function to prompt the user for a file path and execute the steps
 def main():
     # Ask the user to input the file path for the PDF
@@ -106,17 +133,32 @@ def main():
         print(f"Error: The file at {pdf_path} could not be opened. Please check the path and try again.")
         return
     
-    # Check if the file exists and process it
+    # Prompt user for either summary or questions
+    user_choice = input("Do you want a summary of the document or questions based on it? (Enter 'summary' or 'questions'): ").strip().lower()
+    
+    # Process the file based on the user's choice
     try:
         with open(pdf_path, 'rb'):  # Open the file in binary mode to check its existence
             print(f"Extracting and processing text from: {pdf_path}")
+            
             summary, questions = process_pdf_text(pdf_path)
             
-            print("\nSummary of the document:\n")
-            print(summary)
+            if user_choice == 'summary':
+                print("\nSummary of the document:\n")
+                print(summary)
             
-            print("\nGenerated Questions for the document:\n")
-            print(questions)
+            elif user_choice == 'questions':
+                print("\nGenerated Questions for the document:\n")
+                
+                # Ask each question one by one
+                for idx, question in enumerate(questions.split('\n')):
+                    print(f"Question {idx + 1}: {question}")
+                    user_answer = input("Your answer: ").strip()
+                    feedback = grade_answer(question, user_answer)
+                    print("\nAI Feedback:\n", feedback)
+            
+            else:
+                print("Invalid input. Please enter 'summary' or 'questions'.")
             
     except FileNotFoundError:
         print(f"Error: The file at {pdf_path} was not found. Please check the path and try again.")
