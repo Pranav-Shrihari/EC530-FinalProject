@@ -42,9 +42,13 @@ else:
 import os
 os.environ["OPENAI_API_KEY"] = api_key
 
+# Show success message only if file has not yet been uploaded
+api_success = st.success("✅ API Key validated successfully! You can now upload your PDF.")
+
 uploaded_file = st.file_uploader("Upload your PDF file (max 5 pages)", type="pdf")
 
 if uploaded_file:
+    api_success.empty()  # Clear the success message
     # Save to a temp file
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
         tmp_file.write(uploaded_file.read())
