@@ -1,8 +1,9 @@
 import streamlit as st
 import fitz
-from PDF_extractor import extract_text_from_pdf, clean_text, summarize_text, generate_questions_from_summary, grade_answer
+from PDF_extractor import extract_text_from_pdf, clean_text, summarize_text, generate_questions_from_summary, grade_answer, create_polished_pdf, is_copied_from_summary, highlight_copied_parts
 import tempfile
 import openai
+import re
 
 st.set_page_config(page_title="PDF Summarizer & Quizzer", layout="centered")
 st.title("📄 PDF Summarizer & Quiz Generator")
@@ -75,10 +76,22 @@ if uploaded_file:
     else:
         summary = st.session_state.summary
 
-    st.subheader("📝 Summary")
-    st.write(summary)
+    show_questions = st.checkbox("Would you like to generate questions based on this summary?")
 
-    if st.checkbox("Would you like to generate questions based on this summary?"):
+    if not show_questions:
+        st.subheader("📝 Summary")
+        st.write(summary)
+
+        # --- Download Summary as PDF Button ---
+        pdf_buffer = create_polished_pdf(summary, title="Generated Summary")
+        st.download_button(
+            label="Download Summary as Formatted PDF",
+            data=pdf_buffer,
+            file_name="summary.pdf",
+            mime="application/pdf"
+        )
+
+    else:
         if "questions_text" not in st.session_state:
             with st.spinner("Generating questions..."):
                 questions_text = generate_questions_from_summary(summary)
@@ -103,12 +116,19 @@ if uploaded_file:
                 if f"feedback_{i}" not in st.session_state:
                     st.session_state[f"feedback_{i}"] = ""
 
-                # Handle grading button
                 if st.button(f"Grade Answer {i+1}", key=f"grade_button_{i}"):
                     if user_answer.strip():
-                        with st.spinner("Grading..."):
-                            feedback = grade_answer(question, user_answer)
-                        st.session_state[f"feedback_{i}"] = feedback
+                        if is_copied_from_summary(user_answer, summary):
+                            st.warning("⚠️ Your answer appears to be directly copied from the summary. Please rephrase or elaborate.")
+                            highlighted = highlight_copied_parts(user_answer, summary)
+                            st.markdown("Here’s where copying was detected:")
+                            st.markdown(highlighted, unsafe_allow_html=True)
+                            # Give 0 score feedback
+                            st.session_state[f"feedback_{i}"] = "**Score: 0/Full points**\n\nAnswer was copied from the summary."
+                        else:
+                            with st.spinner("Grading..."):
+                                feedback = grade_answer(question, user_answer)
+                            st.session_state[f"feedback_{i}"] = feedback
                     else:
                         st.warning("Please enter an answer before grading.")
 
