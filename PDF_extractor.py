@@ -2,6 +2,11 @@ import fitz  # PyMuPDF
 import re
 import openai
 import os
+from reportlab.lib.pagesizes import letter
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, ListFlowable, ListItem
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+import difflib
+import io
 
 # Step 1: PDF Text Extraction
 def extract_text_from_pdf(pdf_path):
@@ -112,6 +117,134 @@ def grade_answer(question, user_answer, max_points = 10):
     # Extract and return the feedback
     feedback = response.choices[0].message.content.strip()
     return feedback
+
+# Step 6: PDF Generation using ReportLab
+def create_polished_pdf(summary_text, title="Summary"):
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    styles = getSampleStyleSheet()
+    
+    # Define custom styles
+    title_style = ParagraphStyle(
+        name='TitleStyle',
+        parent=styles['Title'],
+        fontSize=20,
+        spaceAfter=20
+    )
+    body_style = ParagraphStyle(
+        name='BodyStyle',
+        parent=styles['BodyText'],
+        fontSize=12,
+        spaceAfter=12
+    )
+    
+    story = []
+
+    # Add the Title
+    story.append(Paragraph(f"<b>{title}</b>", title_style))
+    story.append(Spacer(1, 20))
+
+    # Preprocess summary text
+    paragraphs = summary_text.strip().split('\n')
+    bullet_items = []
+    inside_bullet_list = False
+
+    for para in paragraphs:
+        para = para.strip()
+        if not para:
+            continue  # skip empty lines
+
+        # Detect bullets (lines starting with "-" or "•")
+        if para.startswith(("-", "•")):
+            bullet_text = para.lstrip("-• ").strip()
+            # Convert **bold** markers inside bullet
+            bullet_text = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', bullet_text)
+            bullet_items.append(Paragraph(bullet_text, body_style))
+            inside_bullet_list = True
+        else:
+            if inside_bullet_list:
+                # Close the previous bullet list
+                story.append(ListFlowable(
+                    [ListItem(item) for item in bullet_items],
+                    bulletType='bullet'
+                ))
+                bullet_items = []
+                inside_bullet_list = False
+
+            # Process normal paragraph with bold conversion
+            para = re.sub(r'\*\*(.+?)\*\*', r'<b>\1</b>', para)
+            story.append(Paragraph(para, body_style))
+            story.append(Spacer(1, 12))
+
+    # If the summary ends with a bullet list, add it
+    if bullet_items:
+        story.append(ListFlowable(
+            [ListItem(item) for item in bullet_items],
+            bulletType='bullet'
+        ))
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
+# Step 7: Check if the answer is copied from the summary
+def is_copied_from_summary(answer, summary, threshold=0.8):
+    """
+    Check if a significant portion of the answer overlaps with the summary.
+    If more than `threshold` similarity, flag as copied.
+    """
+    answer = answer.strip().lower()
+    summary = summary.strip().lower()
+
+    if not answer or not summary:
+        return False
+
+    # Direct substring match (quick and strong flag)
+    if answer in summary:
+        return True
+
+    # Token-based similarity (word overlap)
+    answer_words = set(re.findall(r'\w+', answer))
+    summary_words = set(re.findall(r'\w+', summary))
+
+    if not answer_words:
+        return False
+
+    common_words = answer_words & summary_words
+    overlap_ratio = len(common_words) / len(answer_words)
+
+    if overlap_ratio >= threshold:
+        return True
+
+    # Fallback: sequence matching (fuzzy matching)
+    matcher = difflib.SequenceMatcher(None, answer, summary)
+    if matcher.quick_ratio() >= threshold:
+        return True
+
+    return False
+
+def highlight_copied_parts(answer, summary, threshold=0.9):
+    """
+    Returns highlighted answer: copied parts are wrapped in special markdown highlighting
+    """
+    answer = answer.strip()
+    summary = summary.strip()
+
+    summary_sentences = re.split(r'(?<=[.!?]) +', summary)
+    marked_answer = answer
+
+    for sentence in summary_sentences:
+        sentence = sentence.strip()
+        if not sentence:
+            continue
+
+        matcher = difflib.SequenceMatcher(None, answer.lower(), sentence.lower())
+        if matcher.ratio() >= threshold or sentence.lower() in answer.lower():
+            if sentence in marked_answer:
+                # Wrap copied parts with a markdown highlight
+                marked_answer = marked_answer.replace(sentence, f"**:red[{sentence}]**")
+
+    return marked_answer
 
 # Main function to prompt the user for a file path and execute the steps
 def main():
