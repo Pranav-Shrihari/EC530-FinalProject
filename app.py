@@ -65,7 +65,7 @@ if uploaded_file:
         st.error(f"Error: The file could not be opened. Please check the path and try again.")
         st.stop()
 
-    st.success("✅ PDF uploaded successfully!")
+    pdf_success = st.success("✅ PDF uploaded successfully!")
 
     if "summary" not in st.session_state:
         with st.spinner("Generating summary..."):
@@ -75,6 +75,8 @@ if uploaded_file:
             st.session_state.summary = summary
     else:
         summary = st.session_state.summary
+
+    pdf_success.empty()  # Clear the success message
 
     show_questions = st.checkbox("Would you like to generate questions based on this summary?")
 
@@ -92,46 +94,96 @@ if uploaded_file:
         )
 
     else:
-        if "questions_text" not in st.session_state:
-            with st.spinner("Generating questions..."):
-                questions_text = generate_questions_from_summary(summary)
-                st.session_state.questions_text = questions_text
+        # Initialize lock state if not set
+        if "quiz_settings_locked" not in st.session_state:
+            st.session_state.quiz_settings_locked = False
+
+        st.subheader("🛠 Customize Your Quiz")
+
+        # Show text inputs
+        num_questions_input = st.text_input(
+            "How many questions would you like to generate?", 
+            disabled=st.session_state.quiz_settings_locked,
+            key="num_questions_input"
+        )
+
+        points_per_question_input = st.text_input(
+            "How many points is each question worth?", 
+            disabled=st.session_state.quiz_settings_locked,
+            key="points_per_question_input"
+        )
+
+        if not st.session_state.quiz_settings_locked:
+            if st.button("✅ Confirm Settings", key="confirm_settings_button"):
+                try:
+                    num_questions = int(num_questions_input)
+                    points_per_question = int(points_per_question_input)
+
+                    if num_questions <= 0 or points_per_question <= 0:
+                        st.error("Please enter positive numbers for both fields.")
+                        st.stop()
+                    
+                    # Lock settings
+                    st.session_state.num_questions = num_questions
+                    st.session_state.points_per_question = points_per_question
+                    st.session_state.quiz_settings_locked = True
+                    st.rerun()  # Refresh to show the quiz section
+                except ValueError:
+                    st.error("Please enter valid integers for number of questions and points per question.")
+                    st.stop()
         else:
-            questions_text = st.session_state.questions_text
+            if "questions_text" not in st.session_state:
+                with st.spinner("Generating questions..."):
+                    questions_text = generate_questions_from_summary(summary, num_questions=num_questions_input, points_per_question=points_per_question_input)
+                    st.session_state.questions_text = questions_text
+            else:
+                questions_text = st.session_state.questions_text
 
-        st.subheader("🧠 Questions")
-        questions = questions_text.split("\n")
+            st.subheader("🧠 Questions")
+            questions = questions_text.split("\n")
 
-        for i, question in enumerate(questions):
-            question_container = st.container()  # Keeps everything grouped together
+            for i, question in enumerate(questions):
+                question_container = st.container()
 
-            with question_container:
-                st.markdown(f"**Q{question.strip()}**")
-                user_answer = st.text_area("Your Answer:", key=f"answer_{i}")
+                with question_container:
+                    st.markdown(f"**Q{question.strip()}**")
 
-                # Prepare a persistent area for feedback
-                feedback_placeholder = st.empty()
+                    # Ensure keys exist
+                    if f"feedback_{i}" not in st.session_state:
+                        st.session_state[f"feedback_{i}"] = ""
+                    if f"answer_{i}" not in st.session_state:
+                        st.session_state[f"answer_{i}"] = ""
 
-                # Initialize feedback in session state if not present
-                if f"feedback_{i}" not in st.session_state:
-                    st.session_state[f"feedback_{i}"] = ""
+                    user_answer = st.text_area("Your Answer:", key=f"answer_{i}")
 
-                if st.button(f"Grade Answer {i+1}", key=f"grade_button_{i}"):
-                    if user_answer.strip():
-                        if is_copied_from_summary(user_answer, summary):
-                            st.warning("⚠️ Your answer appears to be directly copied from the summary. Please rephrase or elaborate.")
-                            highlighted = highlight_copied_parts(user_answer, summary)
-                            st.markdown("Here’s where copying was detected:")
-                            st.markdown(highlighted, unsafe_allow_html=True)
-                            # Give 0 score feedback
-                            st.session_state[f"feedback_{i}"] = "**Score: 0/Full points**\n\nAnswer was copied from the summary."
-                        else:
-                            with st.spinner("Grading..."):
-                                feedback = grade_answer(question, user_answer)
-                            st.session_state[f"feedback_{i}"] = feedback
-                    else:
-                        st.warning("Please enter an answer before grading.")
+                    feedback_placeholder = st.empty()
 
-                # Always show the feedback (if available)
-                if st.session_state[f"feedback_{i}"]:
-                    feedback_placeholder.markdown(f"**Feedback for Q{i+1}:**\n\n{st.session_state[f'feedback_{i}']}")
+                    # Only show Grade button if feedback not yet provided
+                    if not st.session_state[f"feedback_{i}"]:
+                        if st.button(f"Grade Answer {i+1}", key=f"grade_button_{i}"):
+                            if user_answer.strip():
+                                if is_copied_from_summary(user_answer, summary):
+                                    st.warning("⚠️ Your answer appears to be directly copied from the summary.")
+                                    highlighted = highlight_copied_parts(user_answer, summary)
+                                    st.markdown("Here’s where copying was detected:")
+                                    st.markdown(highlighted, unsafe_allow_html=True)
+                                    st.session_state[f"feedback_{i}"] = f"**Score: 0/{points_per_question_input}**"
+                                else:
+                                    with st.spinner("Grading..."):
+                                        feedback = grade_answer(question, user_answer, points_per_question_input)
+                                    st.session_state[f"feedback_{i}"] = feedback
+                                st.rerun()  # rerun immediately after grading
+                            else:
+                                st.warning("Please enter an answer before grading.")
+
+                    # Always show feedback if available
+                    if st.session_state[f"feedback_{i}"]:
+                        feedback_placeholder.markdown(f"**Feedback for Q{i+1}:**\n\n{st.session_state[f'feedback_{i}']}")
+
+                
+            # Reset Quiz Settings Button
+            if st.button("🔄 Reset Quiz Settings", key="reset_quiz_settings_button"):
+                for key in ["quiz_settings_locked", "num_questions_input", "points_per_question_input", "questions_text", "answers", "feedbacks"]:
+                    st.session_state.pop(key, None)
+                st.success("Quiz settings have been reset. Please set them again.")
+                st.rerun()
