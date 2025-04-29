@@ -79,26 +79,21 @@ def generate_questions_from_summary(summary, num_questions=5, points_per_questio
     questions = response.choices[0].message.content.strip()
     return questions
 
-# Process the entire document: summarize and generate questions
-def process_pdf_text(pdf_path):
-    # Step 1: Extract text from the PDF
-    pdf_text = extract_text_from_pdf(pdf_path)
-    
-    # Step 2: Clean and preprocess the text
-    cleaned_text = clean_text(pdf_text)
-    
-    # Step 3: Summarize the entire content
-    summary = summarize_text(cleaned_text)
-    
-    # Step 4: Generate questions based on the summary
-    questions = generate_questions_from_summary(summary)
-    
-    return summary, questions
-
 # Step 5: Grading User's Response using AI
 
 # Function to grade the user's response using AI
-def grade_answer(question, user_answer, max_points = 10):
+def grade_answer(question, user_answer, summary, max_points = 10):
+    # 1) Copy check
+    if is_copied_from_summary(user_answer, summary):
+        highlighted = highlight_copied_parts(user_answer, summary)
+        return (
+            f"**Score: 0/{max_points}**\n\n"
+            "⚠️ Your answer appears to be copied from the summary. "
+            "Here’s where copying was detected:\n\n"
+            f"{highlighted}"
+        )
+    
+    # 2) Otherwise, do the normal AI grading
     openai.api_key = os.getenv("OPENAI_API_KEY")
     if not openai.api_key:
         raise ValueError("OpenAI API key not found. Please set the OPENAI_API_KEY environment variable.")
@@ -187,39 +182,53 @@ def create_polished_pdf(summary_text, title="Summary"):
     buffer.seek(0)
     return buffer
 
-# Step 7: Check if the answer is copied from the summary
+# Helper functions to detect copied content
 def is_copied_from_summary(answer, summary, threshold=0.8):
     """
     Check if a significant portion of the answer overlaps with the summary.
-    If more than `threshold` similarity, flag as copied.
+    Flags True if:
+      1) The entire answer is in the summary.
+      2) Word-overlap ratio ≥ threshold.
+      3) SequenceMatcher quick_ratio ≥ threshold.
+      4) ≥ threshold fraction of answer characters come from summary sentences verbatim.
     """
-    answer = answer.strip().lower()
-    summary = summary.strip().lower()
-
+    answer = answer.strip()
+    summary = summary.strip()
     if not answer or not summary:
         return False
 
-    # Direct substring match (quick and strong flag)
+    # 1) Direct substring
     if answer in summary:
         return True
 
-    # Token-based similarity (word overlap)
-    answer_words = set(re.findall(r'\w+', answer))
-    summary_words = set(re.findall(r'\w+', summary))
+    # 2) Word-level overlap
+    import re, difflib
+    ans_words = set(re.findall(r'\w+', answer.lower()))
+    summ_words = set(re.findall(r'\w+', summary.lower()))
+    if ans_words:
+        overlap = len(ans_words & summ_words) / len(ans_words)
+        if overlap >= threshold:
+            return True
 
-    if not answer_words:
-        return False
-
-    common_words = answer_words & summary_words
-    overlap_ratio = len(common_words) / len(answer_words)
-
-    if overlap_ratio >= threshold:
+    # 3) Fuzzy
+    if difflib.SequenceMatcher(None, answer.lower(), summary.lower()).quick_ratio() >= threshold:
         return True
 
-    # Fallback: sequence matching (fuzzy matching)
-    matcher = difflib.SequenceMatcher(None, answer, summary)
-    if matcher.quick_ratio() >= threshold:
-        return True
+    # 4) Sentence‐level verbatim match
+    #   Split the answer into sentences, count how many chars of those sentences appear verbatim in summary
+    answer_sentences = re.split(r'(?<=[.!?])\s+', answer)
+    total_chars = len(answer)
+    if total_chars > 0:
+        matched_chars = 0
+        for sent in answer_sentences:
+            sent = sent.strip()
+            # ignore very short fragments
+            if len(sent) < 10:
+                continue
+            if sent in summary:
+                matched_chars += len(sent)
+        if matched_chars / total_chars >= threshold:
+            return True
 
     return False
 

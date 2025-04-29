@@ -6,9 +6,7 @@ from PDF_extractor import (
     summarize_text,
     generate_questions_from_summary,
     grade_answer,
-    create_polished_pdf,
-    is_copied_from_summary,
-    highlight_copied_parts,
+    create_polished_pdf
 )
 import tempfile
 import openai
@@ -182,23 +180,15 @@ if uploaded_file:
                 ques = questions[idx]
                 ans = st.session_state.get(f"answer_{idx}", "").strip()
 
-                # perform the same grading logic, but only for question idx
-                if is_copied_from_summary(ans, st.session_state.summary):
-                    st.warning(f"⚠️ Q{idx+1} appears copied from the summary.")
-                    hl = highlight_copied_parts(ans, st.session_state.summary)
-                    st.markdown("Here’s where copying was detected:")
-                    st.markdown(hl, unsafe_allow_html=True)
-                    score_text = f"0/{st.session_state.points_per_question}"
-                    st.session_state[f"feedback_{idx}"] = f"**Score: {score_text}**"
-                else:
-                    with st.spinner(f"Grading Q{idx+1}..."):
-                        fb = grade_answer(
-                            ques,
-                            ans,
-                            st.session_state.points_per_question,
-                        )
-                    fb_norm = re.sub(r"(?i)(\d+)\s*out of\s*(\d+)", r"\1/\2", fb)
-                    st.session_state[f"feedback_{idx}"] = fb_norm
+                with st.spinner(f"Grading Q{idx+1}..."):
+                    fb = grade_answer(
+                        ques,
+                        ans,
+                        st.session_state.summary,
+                        st.session_state.points_per_question,
+                    )
+                fb_norm = re.sub(r"(?i)(\d+)\s*out of\s*(\d+)", r"\1/\2", fb)
+                st.session_state[f"feedback_{idx}"] = fb_norm
 
                 # advance to the next question (or finish)
                 st.session_state.grading_index += 1
