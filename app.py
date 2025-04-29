@@ -145,9 +145,11 @@ if uploaded_file:
                 )
 
                 if st.session_state[f"feedback_{i}"]:
-                    st.markdown(
-                        f"**Feedback for Q{i+1}:**\n\n{st.session_state[f'feedback_{i}']}"
-                    )
+                    feedback_html = st.session_state[f"feedback_{i}"]
+                    # Render the header
+                    st.markdown(f"**Feedback for Q{i+1}:**", unsafe_allow_html=True)
+                    # Render the HTML-marked answer
+                    st.markdown(feedback_html, unsafe_allow_html=True)
 
             # --- Grade All Questions (stepwise) ---
             # initialize our grading flags

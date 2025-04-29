@@ -85,12 +85,10 @@ def generate_questions_from_summary(summary, num_questions=5, points_per_questio
 def grade_answer(question, user_answer, summary, max_points = 10):
     # 1) Copy check
     if is_copied_from_summary(user_answer, summary):
-        highlighted = highlight_copied_parts(user_answer, summary)
         return (
             f"**Score: 0/{max_points}**\n\n"
             "⚠️ Your answer appears to be copied from the summary. "
-            "Here’s where copying was detected:\n\n"
-            f"{highlighted}"
+            "Therefore, you have been awarded a 0 for this question.\n\n"
         )
     
     # 2) Otherwise, do the normal AI grading
@@ -231,26 +229,3 @@ def is_copied_from_summary(answer, summary, threshold=0.8):
             return True
 
     return False
-
-def highlight_copied_parts(answer, summary, threshold=0.9):
-    """
-    Returns highlighted answer: copied parts are wrapped in special markdown highlighting
-    """
-    answer = answer.strip()
-    summary = summary.strip()
-
-    summary_sentences = re.split(r'(?<=[.!?]) +', summary)
-    marked_answer = answer
-
-    for sentence in summary_sentences:
-        sentence = sentence.strip()
-        if not sentence:
-            continue
-
-        matcher = difflib.SequenceMatcher(None, answer.lower(), sentence.lower())
-        if matcher.ratio() >= threshold or sentence.lower() in answer.lower():
-            if sentence in marked_answer:
-                # Wrap copied parts with a markdown highlight
-                marked_answer = marked_answer.replace(sentence, f"<mark>{sentence}</mark>")
-
-    return marked_answer
