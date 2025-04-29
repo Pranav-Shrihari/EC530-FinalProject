@@ -185,6 +185,31 @@ if uploaded_file:
                         st.session_state.graded_all = True
                         st.rerun()
 
+            # --- Quiz Summary ---
+        if st.session_state.get("graded_all", False):
+            total_score = 0
+            total_possible = st.session_state.num_questions * st.session_state.points_per_question
+            for i in range(st.session_state.num_questions):
+                fb = st.session_state.get(f"feedback_{i}", "")
+                match = re.search(r"(\d+)/(\d+)", fb)
+                if match:
+                    total_score += int(match.group(1))
+            percentage = (total_score / total_possible) * 100 if total_possible > 0 else 0
+            if percentage >= 90:
+                letter = "A"
+            elif percentage >= 80:
+                letter = "B"
+            elif percentage >= 70:
+                letter = "C"
+            elif percentage >= 60:
+                letter = "D"
+            else:
+                letter = "F"
+            st.subheader("🎉 Quiz Summary")
+            st.markdown(f"**Total Score:** {total_score}/{total_possible}")
+            st.markdown(f"**Percentage:** {percentage:.1f}%")
+            st.markdown(f"**Grade:** {letter}")
+                
             # --- Back to Summary Button ---
             if st.session_state.get("graded_all", False):
                 if st.button("🔙 Back to Summary", key="back_to_summary"):
