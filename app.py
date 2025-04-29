@@ -151,39 +151,62 @@ if uploaded_file:
                         f"**Feedback for Q{i+1}:**\n\n{st.session_state[f'feedback_{i}']}"
                     )
 
-            # --- Grade All Questions ---
-            if not st.session_state.get("graded_all", False):
+            # --- Grade All Questions (stepwise) ---
+            # initialize our grading flags
+            st.session_state.setdefault("grading_all", False)
+            st.session_state.setdefault("grading_index", 0)
+
+            # when the user first clicks Grade All, start the stepwise loop
+            if not st.session_state.get("graded_all", False) \
+               and not st.session_state.get("grading_all", False):
                 if st.button("📖 Grade All Questions", key="grade_all_button"):
-                    missing = [i for i in range(len(questions))
-                               if not st.session_state.get(f"answer_{i}", "").strip()]
+                    # ensure every question has an answer
+                    missing = [
+                        i for i in range(len(questions))
+                        if not st.session_state.get(f"answer_{i}", "").strip()
+                    ]
                     if missing:
                         st.warning("Please answer all questions before grading.")
                     else:
-                        for i, ques in enumerate(questions):
-                            ans = st.session_state[f"answer_{i}"]
-                            if is_copied_from_summary(ans, summary):
-                                st.warning(f"⚠️ Q{i+1} appears copied from the summary.")
-                                hl = highlight_copied_parts(ans, summary)
-                                st.markdown("Here’s where copying was detected:")
-                                st.markdown(hl, unsafe_allow_html=True)
-                                score_text = f"0/{st.session_state.points_per_question}"
-                                st.session_state[f"feedback_{i}"] = f"**Score: {score_text}**"
-                            else:
-                                with st.spinner(f"Grading Q{i+1}..."):
-                                    fb = grade_answer(
-                                        ques,
-                                        ans,
-                                        st.session_state.points_per_question,
-                                    )
-                                fb_normalized = re.sub(
-                                    r"(?i)(\d+)\s*out of\s*(\d+)",
-                                    r"\1/\2",
-                                    fb,
-                                )
-                                st.session_state[f"feedback_{i}"] = fb_normalized
-                        # mark quiz graded
-                        st.session_state.graded_all = True
+                        # clear any old feedback
+                        for i in range(len(questions)):
+                            st.session_state.pop(f"feedback_{i}", None)
+                        # kick off the stepwise grader
+                        st.session_state.grading_all = True
+                        st.session_state.grading_index = 0
                         st.rerun()
+
+            # if we are in the middle of grading_all, grade one question then rerun
+            if st.session_state.get("grading_all", False):
+                idx = st.session_state.grading_index
+                ques = questions[idx]
+                ans = st.session_state.get(f"answer_{idx}", "").strip()
+
+                # perform the same grading logic, but only for question idx
+                if is_copied_from_summary(ans, st.session_state.summary):
+                    st.warning(f"⚠️ Q{idx+1} appears copied from the summary.")
+                    hl = highlight_copied_parts(ans, st.session_state.summary)
+                    st.markdown("Here’s where copying was detected:")
+                    st.markdown(hl, unsafe_allow_html=True)
+                    score_text = f"0/{st.session_state.points_per_question}"
+                    st.session_state[f"feedback_{idx}"] = f"**Score: {score_text}**"
+                else:
+                    with st.spinner(f"Grading Q{idx+1}..."):
+                        fb = grade_answer(
+                            ques,
+                            ans,
+                            st.session_state.points_per_question,
+                        )
+                    fb_norm = re.sub(r"(?i)(\d+)\s*out of\s*(\d+)", r"\1/\2", fb)
+                    st.session_state[f"feedback_{idx}"] = fb_norm
+
+                # advance to the next question (or finish)
+                st.session_state.grading_index += 1
+                if st.session_state.grading_index >= len(questions):
+                    st.session_state.grading_all = False
+                    st.session_state.graded_all = True
+                st.rerun()
+
 
             # --- Quiz Summary ---
         if st.session_state.get("graded_all", False):
