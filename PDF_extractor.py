@@ -87,7 +87,7 @@ def grade_answer(question, user_answer, summary, max_points = 10):
     if is_copied_from_summary(user_answer, summary):
         return (
             f"Grade: 0/{max_points}\n\n"
-            "⚠️ Your answer appears to be copied from the summary. "
+            "Your answer appears to be copied from the summary. "
             "Therefore, you have been awarded a 0 for this question.\n\n"
         )
     
