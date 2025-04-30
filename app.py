@@ -6,7 +6,8 @@ from PDF_extractor import (
     summarize_text,
     generate_questions_from_summary,
     grade_answer,
-    create_polished_pdf
+    create_polished_pdf,
+    create_quiz_feedback_pdf
 )
 import tempfile
 import openai
@@ -69,7 +70,7 @@ if "summary" not in st.session_state:
         st.stop()
 
     # Generate summary once
-    with st.spinner("Generating summary..."):
+    with st.spinner("PDF Uploaded Successfully! Generating summary..."):
         raw = extract_text_from_pdf(tmp_path)
         cleaned = clean_text(raw)
         st.session_state.summary = summarize_text(cleaned)
@@ -105,8 +106,8 @@ if not show_questions:
         mime="application/pdf",
     )
 
-    # Upload Another PDF button
-    if st.button("🔄 Upload Another PDF", key="reset_pdf"):
+    # Upload New PDF button
+    if st.button("🔄 Upload New PDF", key="reset_pdf"):
         # clear summary + quiz state
         for key in [
             "summary", "questions_generated", "questions_text", "graded_all",
@@ -233,6 +234,21 @@ else:
         st.markdown(f"**Percentage:** {percentage:.1f}%")
         st.markdown(f"**Grade:** {letter}")
 
+        # Download Quiz Feedback PDF
+        quiz_buf = create_quiz_feedback_pdf(
+            questions,
+            [st.session_state[f"answer_{i}"] for i in range(len(questions))],
+            [st.session_state[f"feedback_{i}"] for i in range(len(questions))],
+            title="Quiz & Feedback"
+        )
+        st.download_button(
+            label="📥 Download Quiz + Feedback as PDF",
+            data=quiz_buf,
+            file_name="quiz_feedback.pdf",
+            mime="application/pdf",
+        )
+
+        # Back to Summary button
         if st.button("🔙 Back to Summary", key="back_to_summary"):
             # clear quiz-related state (keep summary)
             for key in [

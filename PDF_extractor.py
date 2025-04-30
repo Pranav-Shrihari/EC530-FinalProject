@@ -86,7 +86,7 @@ def grade_answer(question, user_answer, summary, max_points = 10):
     # 1) Copy check
     if is_copied_from_summary(user_answer, summary):
         return (
-            f"**Score: 0/{max_points}**\n\n"
+            f"Grade: 0/{max_points}\n\n"
             "⚠️ Your answer appears to be copied from the summary. "
             "Therefore, you have been awarded a 0 for this question.\n\n"
         )
@@ -179,6 +179,76 @@ def create_polished_pdf(summary_text, title="Summary"):
     doc.build(story)
     buffer.seek(0)
     return buffer
+
+# Step 7 - Quiz + Feedback PDF Generation
+def create_quiz_feedback_pdf(questions, answers, feedbacks, title="Quiz and Feedback"):
+    """
+    Generates a PDF containing the quiz questions, user answers, and structured feedback.
+    Breaks each feedback string into Grade, Feedback, and Example Answer sections.
+    :param questions: List of question strings
+    :param answers:   List of user answer strings
+    :param feedbacks: List of raw feedback strings from grade_answer
+    :param title:     Title on the PDF cover page
+    :return:          BytesIO buffer with PDF data
+    """
+    buffer = io.BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=letter)
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(name='TitleStyle', parent=styles['Title'], fontSize=20, spaceAfter=20)
+    grade_style = ParagraphStyle(name='GradeStyle', parent=styles['Heading3'], fontSize=14, spaceAfter=6)
+    question_style = ParagraphStyle(name='QuestionStyle', parent=styles['Heading2'], fontSize=14, spaceAfter=6)
+    answer_style = ParagraphStyle(name='AnswerStyle', parent=styles['BodyText'], fontSize=12, spaceAfter=4)
+    feedback_style = ParagraphStyle(name='FeedbackStyle', parent=styles['BodyText'], fontSize=12, textColor='red', spaceAfter=12)
+
+    story = []
+    story.append(Paragraph(f"<b>{title}</b>", title_style))
+    story.append(Spacer(1, 20))
+
+    for idx, (q, a, f_raw) in enumerate(zip(questions, answers, feedbacks), start=1):
+        # Question
+        story.append(Paragraph(f"Q{q}", question_style))
+        story.append(Spacer(1, 4))
+
+        # Extract Grade
+        grade_match = re.search(r"\*?Grade:?\s*(\d+/\d+)\*?", f_raw)
+        grade = grade_match.group(1) if grade_match else ""
+        # Clean raw feedback text
+        f_clean = re.sub(r"\*?Grade:?\s*\d+/\d+\*?", "", f_raw).strip()
+
+        # Split Feedback vs Example Answer
+        example_answer = ""
+        if "Example Answer:" in f_clean:
+            parts = f_clean.split("Example Answer:", 1)
+            feedback_text = parts[0].strip().lstrip(":").strip()
+            example_answer = parts[1].strip()
+        else:
+            feedback_text = f_clean
+
+        # User Answer Section
+        story.append(Paragraph(f"<b>Your Answer:</b> {a}", answer_style))
+        story.append(Spacer(1, 4))
+
+        # Grade Section
+        story.append(Paragraph(f"<b>Grade:</b> {grade}", grade_style))
+        story.append(Spacer(1, 4))
+
+        # Feedback Section
+        story.append(Paragraph(f"{feedback_text}", feedback_style))
+        story.append(Spacer(1, 4))
+
+        # Example Answer Section
+        if example_answer:
+            story.append(Paragraph(f"<b>Example Answer:</b> {example_answer}", feedback_style))
+            story.append(Spacer(1, 12))
+        else:
+            story.append(Spacer(1, 12))
+
+    doc.build(story)
+    buffer.seek(0)
+    return buffer
+
+
+
 
 # Helper functions to detect copied content
 def is_copied_from_summary(answer, summary, threshold=0.8):
