@@ -99,26 +99,31 @@ if not show_questions:
     st.subheader("📝 Summary")
     st.write(summary)
     buffer = create_polished_pdf(summary, title="Generated Summary")
-    st.download_button(
-        label="Download Summary as PDF",
-        data=buffer,
-        file_name="summary.pdf",
-        mime="application/pdf",
-    )
 
-    # Upload New PDF button
-    if st.button("🔄 Upload New PDF", key="reset_pdf"):
-        # clear summary + quiz state
-        for key in [
-            "summary", "questions_generated", "questions_text", "graded_all",
-            "quiz_settings_locked", "num_q_input", "pts_q_input"
-        ]:
-            st.session_state.pop(key, None)
-        # clear dynamic answers/feedback
-        for k in list(st.session_state.keys()):
-            if k.startswith("answer_") or k.startswith("feedback_"):
-                st.session_state.pop(k, None)
-        st.rerun()
+    col_backpage, col_quiz = st.columns([2, 1])
+    with col_backpage:
+        # Upload New PDF button
+        if st.button("🔄 Upload New PDF", key="reset_pdf"):
+            # clear summary + quiz state
+            for key in [
+                "summary", "questions_generated", "questions_text", "graded_all",
+                "quiz_settings_locked", "num_q_input", "pts_q_input"
+            ]:
+                st.session_state.pop(key, None)
+            # clear dynamic answers/feedback
+            for k in list(st.session_state.keys()):
+                if k.startswith("answer_") or k.startswith("feedback_"):
+                    st.session_state.pop(k, None)
+            st.rerun()
+
+    with col_quiz:
+        st.download_button(
+            label="Download Summary as PDF",
+            data=buffer,
+            file_name="summary.pdf",
+            mime="application/pdf",
+        )
+
 else:
     # --- Quiz Settings & Generation ---
     if "quiz_settings_locked" not in st.session_state:
@@ -241,22 +246,47 @@ else:
             [st.session_state[f"feedback_{i}"] for i in range(len(questions))],
             title="Quiz & Feedback"
         )
-        st.download_button(
-            label="📥 Download Quiz + Feedback as PDF",
-            data=quiz_buf,
-            file_name="quiz_feedback.pdf",
-            mime="application/pdf",
-        )
 
-        # Back to Summary button
-        if st.button("🔙 Back to Summary", key="back_to_summary"):
-            # clear quiz-related state (keep summary)
-            for key in [
-                "questions_generated", "questions_text", "graded_all",
-                "quiz_settings_locked", "num_q_input", "pts_q_input"
-            ]:
-                st.session_state.pop(key, None)
-            for k in list(st.session_state.keys()):
-                if k.startswith("answer_") or k.startswith("feedback_"):
-                    st.session_state.pop(k, None)
-            st.rerun()
+        # Two columns: left for Back, right for Download
+        col_back, col_download = st.columns([2, 1])
+        with col_back:
+            if st.button("🔙 Back to Summary", key="back_to_summary"):
+                # clear quiz-related state (keep summary)
+                for key in [
+                    "questions_generated", "questions_text", "graded_all",
+                    "quiz_settings_locked", "num_q_input", "pts_q_input"
+                ]:
+                    st.session_state.pop(key, None)
+                for k in list(st.session_state.keys()):
+                    if k.startswith("answer_") or k.startswith("feedback_"):
+                        st.session_state.pop(k, None)
+                st.rerun()
+
+        with col_download:
+            st.download_button(
+                label="📥 Download Quiz + Feedback as PDF",
+                data=quiz_buf,
+                file_name="quiz_feedback.pdf",
+                mime="application/pdf",
+            )
+
+        # Three columns: left for Back, right for Download
+        col_spacer, col_newpdf, col_spacer2 = st.columns([2, 1, 2])
+        with col_spacer:
+            st.empty()
+        with col_spacer2:
+            st.empty()
+        with col_newpdf:
+            # Upload New PDF button
+            if st.button("🔄 Upload New PDF", key="reset_pdf_from_quiz"):
+                # clear summary + quiz state
+                for key in [
+                    "summary", "questions_generated", "questions_text", "graded_all",
+                    "quiz_settings_locked", "num_q_input", "pts_q_input"
+                ]:
+                    st.session_state.pop(key, None)
+                # clear dynamic answers/feedback
+                for k in list(st.session_state.keys()):
+                    if k.startswith("answer_") or k.startswith("feedback_"):
+                        st.session_state.pop(k, None)
+                st.rerun()
