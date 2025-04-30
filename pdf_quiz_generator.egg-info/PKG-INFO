@@ -1,0 +1,29 @@
+Metadata-Version: 2.4
+Name: pdf-quiz-generator
+Version: 0.1.0
+Summary: Streamlit app: summarize PDFs & generate quizzes
+Home-page: https://github.com/youruser/pdf-quiz-generator
+Author: Your Name
+Author-email: you@example.com
+Classifier: Programming Language :: Python :: 3
+Classifier: Framework :: Streamlit
+Requires-Python: >=3.7
+Description-Content-Type: text/markdown
+Requires-Dist: streamlit>=1.0
+Requires-Dist: pymupdf
+Requires-Dist: reportlab
+Requires-Dist: openai
+Dynamic: author
+Dynamic: author-email
+Dynamic: classifier
+Dynamic: description
+Dynamic: description-content-type
+Dynamic: home-page
+Dynamic: requires-dist
+Dynamic: requires-python
+Dynamic: summary
+
+# EC530-FinalProject
+## How to use
+After downloading this directory, you need to set up an API key variable that you can use. You can use the following command in the terminal:
+<pre lang="python"> export OPENAI_API_KEY= 'your-api-key-here' ## Replace this with the API key </pre>

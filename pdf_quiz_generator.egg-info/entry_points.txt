@@ -1,0 +1,2 @@
+[console_scripts]
+pdf-quiz = pdf_quiz_generator.cli:main
