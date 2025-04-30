@@ -59,7 +59,7 @@ def summarize_text(text):
 # Step 4: Question Generation using AI
 
 # Generate questions based on the summary of the entire text
-def generate_questions_from_summary(summary, num_questions=5, points_per_question=10, question_type="Short Answer"):
+def generate_questions_from_summary(summary, num_questions=5, points_per_question=10):
     openai.api_key = os.getenv("OPENAI_API_KEY")
     if not openai.api_key:
         raise ValueError("OpenAI API key not found. Please set the OPENAI_API_KEY environment variable.")
@@ -69,7 +69,7 @@ def generate_questions_from_summary(summary, num_questions=5, points_per_questio
         model="gpt-4",  # You can also use gpt-3.5-turbo
         messages=[
             {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": f"Based on the following summary, generate {num_questions} {question_type.lower()} questions for review: {summary}, with each question worth {points_per_question} points."}
+            {"role": "user", "content": f"Based on the following summary, generate {num_questions} questions for review: {summary}, with each question worth {points_per_question} points."}
         ],
         max_tokens=300,  # You can adjust this number for longer or shorter responses
         temperature=0.7
