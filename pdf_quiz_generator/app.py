@@ -1,13 +1,12 @@
 import streamlit as st
 import fitz
-from pdf_quiz_generator.PDF_extractor import (
+from PDF_extractor import (
     extract_text_from_pdf,
     clean_text,
     summarize_text,
     generate_questions_from_summary,
     grade_answer,
     create_polished_pdf,
-    create_quiz_feedback_pdf
 )
 import tempfile
 import openai
@@ -44,8 +43,6 @@ if "api_key_validated" not in st.session_state or not st.session_state.api_key_v
 else:
     api_key = st.session_state.api_key
     client = openai.OpenAI(api_key=api_key)
-
-# Ensure downstream OpenAI calls pick up the key
 os.environ["OPENAI_API_KEY"] = api_key
 
 # --- PDF Upload & Summary Reset ---
@@ -55,8 +52,6 @@ if "summary" not in st.session_state:
     if not uploaded_file:
         st.stop()
     api_success.empty()
-
-    # Save to temp and check page count
     with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp_file:
         tmp_file.write(uploaded_file.read())
         tmp_path = tmp_file.name
@@ -68,15 +63,12 @@ if "summary" not in st.session_state:
     except Exception:
         st.error("Error opening PDF. Please check the file and try again.")
         st.stop()
-
-    # Generate summary once
     with st.spinner("PDF Uploaded Successfully! Generating summary..."):
         raw = extract_text_from_pdf(tmp_path)
         cleaned = clean_text(raw)
         st.session_state.summary = summarize_text(cleaned)
     st.rerun()
 
-# At this point, we have a summary
 summary = st.session_state.summary
 
 # --- Summary vs Quiz Toggle ---
@@ -86,36 +78,28 @@ quiz_active = (
 )
 show_questions = st.session_state.get("questions_generated", False)
 
-# Display checkbox only before quiz generation or after grading reset
 if not quiz_active and not show_questions:
     if st.checkbox("Would you like to generate questions based on this summary?", key="show_questions_checkbox"):
         st.session_state.questions_generated = True
         st.session_state.pop("graded_all", None)
         st.rerun()
 
-# --- Render Content ---
 if not show_questions:
-    # Summary display
     st.subheader("📝 Summary")
     st.write(summary)
     buffer = create_polished_pdf(summary, title="Generated Summary")
-
     col_backpage, col_quiz = st.columns([2, 1])
     with col_backpage:
-        # Upload New PDF button
         if st.button("🔄 Upload New PDF", key="reset_pdf"):
-            # clear summary + quiz state
             for key in [
                 "summary", "questions_generated", "questions_text", "graded_all",
                 "quiz_settings_locked", "num_q_input", "pts_q_input"
             ]:
                 st.session_state.pop(key, None)
-            # clear dynamic answers/feedback
             for k in list(st.session_state.keys()):
                 if k.startswith("answer_") or k.startswith("feedback_"):
                     st.session_state.pop(k, None)
             st.rerun()
-
     with col_quiz:
         st.download_button(
             label="Download Summary as PDF",
@@ -125,13 +109,17 @@ if not show_questions:
         )
 
 else:
-    # --- Quiz Settings & Generation ---
+    # Quiz Settings & Generation
     if "quiz_settings_locked" not in st.session_state:
         st.session_state.quiz_settings_locked = False
     if not st.session_state.quiz_settings_locked:
         st.subheader("🛠 Customize Your Quiz")
         num_q = st.text_input("How many questions?", key="num_q_input")
         pts_q = st.text_input("Points per question?", key="pts_q_input")
+        question_types = ["Short Answer", "Multiple Choice", "True/False"]
+        selected_type = st.selectbox(
+            "Select question type:", question_types, key="question_type_input"
+        )
         if st.button("✅ Confirm Settings", key="confirm_settings_button"):
             try:
                 n = int(num_q)
@@ -141,46 +129,69 @@ else:
                     st.stop()
                 st.session_state.num_questions = n
                 st.session_state.points_per_question = p
+                st.session_state.question_type = selected_type
                 st.session_state.quiz_settings_locked = True
                 st.rerun()
             except ValueError:
                 st.error("Please enter valid integers.")
                 st.stop()
     else:
-        # --- Generate Questions ---
+        # Generate Questions
         if "questions_text" not in st.session_state:
             with st.spinner("Generating questions..."):
                 qt = generate_questions_from_summary(
                     summary,
                     num_questions=st.session_state.num_questions,
                     points_per_question=st.session_state.points_per_question,
+                    question_type=st.session_state.get("question_type")
                 )
                 st.session_state.questions_text = qt
-        questions = st.session_state.questions_text.split("\n")
+        # Parse into blocks
+        raw_qt = st.session_state.questions_text.strip()
+        blocks = re.split(r'\n(?=\d+[\.\)])', raw_qt)
+        questions = [blk.strip() for blk in blocks if blk.strip()]
 
         st.subheader("🧠 Questions")
-        for i, ques in enumerate(questions):
-            st.markdown(f"**Q{ques.strip()}**")
-            st.session_state.setdefault(f"answer_{i}", "")
+        readonly = st.session_state.get("graded_all", False)
+
+        for i, block in enumerate(questions):
             st.session_state.setdefault(f"feedback_{i}", "")
+            q_type = st.session_state.get("question_type")
 
-            readonly = st.session_state.get("graded_all", False)
-            _ = st.text_area(
-                "Your Answer:", key=f"answer_{i}", height=150,
-                disabled=readonly
-            )
+            # question text
+            if q_type == "Short Answer":
+                st.markdown(f"**Question {block}**")
+                st.session_state.setdefault(f"answer_{i}", "")
+                st.text_area("Your Answer:", key=f"answer_{i}", height=150, disabled=readonly)
 
-            if st.session_state[f"feedback_{i}"]:
-                feedback_html = st.session_state[f"feedback_{i}"]
-                st.markdown(f"**Feedback for Q{i+1}:**", unsafe_allow_html=True)
-                st.markdown(feedback_html, unsafe_allow_html=True)
+            elif q_type == "Multiple Choice":
+                lines = block.split("\n")
+                st.markdown(f"**Question {lines[0]}**")
+                selected = []
+                for j, opt in enumerate(lines[1:]):
+                    opt = opt.strip()
+                    if not opt:
+                        continue
+                    key_opt = f"answer_{i}_{j}"
+                    if st.checkbox(opt, key=key_opt, disabled=readonly):
+                        selected.append(opt)
+                # store as a single string so grading sees it
+                st.session_state[f"answer_{i}"] = ", ".join(selected)
 
-        # --- Grade All Questions (stepwise) ---
+            else:  # True/False
+                lines = block.split("\n")
+                st.markdown(f"**Question {lines[0]}**")
+                st.radio("Select your answer:", ["True", "False"], key=f"answer_{i}", disabled=readonly)
+
+            # — show graded feedback for *this* question if available —
+            feedback = st.session_state.get(f"feedback_{i}", "").strip()
+            if feedback:
+                st.markdown(feedback)
+
+        # Grading logic remains unchanged...
         st.session_state.setdefault("grading_all", False)
         st.session_state.setdefault("grading_index", 0)
-
-        if not st.session_state.get("graded_all", False) \
-           and not st.session_state.get("grading_all", False):
+        if not st.session_state.get("graded_all") and not st.session_state.get("grading_all"):
             if st.button("📖 Grade All Questions", key="grade_all_button"):
                 missing = [
                     idx for idx in range(len(questions))
@@ -194,8 +205,7 @@ else:
                     st.session_state.grading_all = True
                     st.session_state.grading_index = 0
                     st.rerun()
-
-        if st.session_state.get("grading_all", False):
+        if st.session_state.get("grading_all"):
             idx = st.session_state.grading_index
             ques = questions[idx]
             ans = st.session_state.get(f"answer_{idx}", "").strip()
@@ -205,16 +215,26 @@ else:
                     ans,
                     summary,
                     st.session_state.points_per_question,
+                    question_type=st.session_state.get("question_type")
                 )
-            fb_norm = re.sub(r"(?i)(\d+)\s*out of\s*(\d+)", r"\1/\2", fb)
+            q_type = st.session_state.get("question_type")
+            if q_type in ("Multiple Choice", "True/False"):
+                # look for the “The grade is N.” phrase
+                m = re.search(r"(?i)(?:The grade is|Grade:)\s*(\d+)", fb)
+                score = int(m.group(1)) if m else 0
+                fb_norm = f"{score}/{st.session_state.points_per_question} – {fb}"
+            else:
+                fb_norm = re.sub(r"(?i)(\d+)\s*out of\s*(\d+)", r"\1/\2", fb)
             st.session_state[f"feedback_{idx}"] = fb_norm
+            st.markdown(fb_norm)
             st.session_state.grading_index += 1
             if st.session_state.grading_index >= len(questions):
                 st.session_state.grading_all = False
                 st.session_state.graded_all = True
             st.rerun()
+            
 
-    # --- Quiz Summary & Back to Summary Button ---
+    # Quiz Summary & Navigation
     if st.session_state.get("graded_all", False):
         total_score = 0
         total_possible = st.session_state.num_questions * st.session_state.points_per_question
@@ -224,34 +244,14 @@ else:
             if match:
                 total_score += int(match.group(1))
         percentage = (total_score / total_possible) * 100 if total_possible > 0 else 0
-        if percentage >= 90:
-            letter = "A"
-        elif percentage >= 80:
-            letter = "B"
-        elif percentage >= 65:
-            letter = "C"
-        elif percentage >= 50:
-            letter = "D"
-        else:
-            letter = "F"
+        letter = "A" if percentage >= 90 else "B" if percentage >= 80 else "C" if percentage >= 70 else "D" if percentage >= 60 else "F"
         st.subheader("🎉 Quiz Summary")
         st.markdown(f"**Total Score:** {total_score}/{total_possible}")
         st.markdown(f"**Percentage:** {percentage:.1f}%")
         st.markdown(f"**Grade:** {letter}")
-
-        # Download Quiz Feedback PDF
-        quiz_buf = create_quiz_feedback_pdf(
-            questions,
-            [st.session_state[f"answer_{i}"] for i in range(len(questions))],
-            [st.session_state[f"feedback_{i}"] for i in range(len(questions))],
-            title="Quiz & Feedback"
-        )
-
-        # Two columns: left for Back, right for Download
-        col_back, col_download = st.columns([2, 1])
+        col_back, col_newpdf = st.columns([2, 1])
         with col_back:
             if st.button("🔙 Back to Summary", key="back_to_summary"):
-                # clear quiz-related state (keep summary)
                 for key in [
                     "questions_generated", "questions_text", "graded_all",
                     "quiz_settings_locked", "num_q_input", "pts_q_input"
@@ -261,31 +261,13 @@ else:
                     if k.startswith("answer_") or k.startswith("feedback_"):
                         st.session_state.pop(k, None)
                 st.rerun()
-
-        with col_download:
-            st.download_button(
-                label="📥 Download Quiz + Feedback as PDF",
-                data=quiz_buf,
-                file_name="quiz_feedback.pdf",
-                mime="application/pdf",
-            )
-
-        # Three columns: left for Back, right for Download
-        col_spacer, col_newpdf, col_spacer2 = st.columns([2, 1, 2])
-        with col_spacer:
-            st.empty()
-        with col_spacer2:
-            st.empty()
         with col_newpdf:
-            # Upload New PDF button
             if st.button("🔄 Upload New PDF", key="reset_pdf_from_quiz"):
-                # clear summary + quiz state
                 for key in [
                     "summary", "questions_generated", "questions_text", "graded_all",
                     "quiz_settings_locked", "num_q_input", "pts_q_input"
                 ]:
                     st.session_state.pop(key, None)
-                # clear dynamic answers/feedback
                 for k in list(st.session_state.keys()):
                     if k.startswith("answer_") or k.startswith("feedback_"):
                         st.session_state.pop(k, None)

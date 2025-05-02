@@ -59,7 +59,7 @@ def summarize_text(text):
 # Step 4: Question Generation using AI
 
 # Generate questions based on the summary of the entire text
-def generate_questions_from_summary(summary, num_questions=5, points_per_question=10):
+def generate_questions_from_summary(summary, num_questions=5, points_per_question=10, question_type="short answer"):
     openai.api_key = os.getenv("OPENAI_API_KEY")
     if not openai.api_key:
         raise ValueError("OpenAI API key not found. Please set the OPENAI_API_KEY environment variable.")
@@ -69,9 +69,9 @@ def generate_questions_from_summary(summary, num_questions=5, points_per_questio
         model="gpt-4",  # You can also use gpt-3.5-turbo
         messages=[
             {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": f"Based on the following summary, generate {num_questions} questions for review: {summary}, with each question worth {points_per_question} points."}
+            {"role": "user", "content": f"Based on the following summary, generate {num_questions} {question_type.lower()} questions for review: {summary}, with each question worth {points_per_question} points."}
         ],
-        max_tokens=300,  # You can adjust this number for longer or shorter responses
+        max_tokens=500,  # You can adjust this number for longer or shorter responses
         temperature=0.7
     )
     
@@ -82,32 +82,54 @@ def generate_questions_from_summary(summary, num_questions=5, points_per_questio
 # Step 5: Grading User's Response using AI
 
 # Function to grade the user's response using AI
-def grade_answer(question, user_answer, summary, max_points = 10):
-    # 1) Copy check
-    if is_copied_from_summary(user_answer, summary):
+def grade_answer(question, user_answer, summary, max_points=10, question_type="short answer"):
+    # 1) Copy check (only relevant for short answers)
+    if question_type.lower() == "short answer" and is_copied_from_summary(user_answer, summary):
         return (
             f"Grade: 0/{max_points}\n\n"
             "Your answer appears to be copied from the summary. "
             "Therefore, you have been awarded a 0 for this question.\n\n"
         )
-    
-    # 2) Otherwise, do the normal AI grading
+
+    # 2) Set up API
     openai.api_key = os.getenv("OPENAI_API_KEY")
     if not openai.api_key:
         raise ValueError("OpenAI API key not found. Please set the OPENAI_API_KEY environment variable.")
-    
-    # Request grading feedback based on the user's answer
+
+    # 3) Prompt variations based on question type
+    if question_type.lower() == "short answer":
+        prompt = (
+            f"Question: {question}\nUser Answer: {user_answer}\n"
+            f"Grade the answer out of {max_points} points and provide feedback with an example answer."
+        )
+    elif question_type.lower() == "multiple choice":
+        prompt = (
+            f"Question: {question}\nUser Selected Answer: {user_answer}\n"
+            f"Give a grade of {max_points} if the answer is correct, otherwise give a grade of 0 and provide feedback with the correct answer."
+        )
+    elif question_type.lower() in {"true/false", "true or false"}:
+        prompt = (
+            f"Statement: {question}\nUser Answer: {user_answer}\n"
+            f"Give a grade of {max_points} if the answer is correct (true/false), otherwise give a grade of 0 provide feedback with the correct answer."
+        )
+    else:
+        # Default fallback
+        prompt = (
+            f"Question: {question}\nUser Answer: {user_answer}\n"
+            f"Grade the answer out of {max_points} points and provide feedback."
+        )
+
+    # 4) Call OpenAI API
     response = openai.chat.completions.create(
-        model="gpt-4",  # You can also use gpt-3.5-turbo
+        model="gpt-4",
         messages=[
             {"role": "system", "content": "You are a grading assistant."},
-            {"role": "user", "content": f"Question: {question}\nUser Answer: {user_answer}\nGrade the answer out of {max_points} points and provide feedback with an example answer."}
+            {"role": "user", "content": prompt}
         ],
-        max_tokens=200,  # You can adjust this number for longer or shorter responses
+        max_tokens=200,
         temperature=0.7
     )
-    
-    # Extract and return the feedback
+
     feedback = response.choices[0].message.content.strip()
     return feedback
 
@@ -175,73 +197,6 @@ def create_polished_pdf(summary_text, title="Summary"):
             [ListItem(item) for item in bullet_items],
             bulletType='bullet'
         ))
-
-    doc.build(story)
-    buffer.seek(0)
-    return buffer
-
-# Step 7 - Quiz + Feedback PDF Generation
-def create_quiz_feedback_pdf(questions, answers, feedbacks, title="Quiz and Feedback"):
-    """
-    Generates a PDF containing the quiz questions, user answers, and structured feedback.
-    Breaks each feedback string into Grade, Feedback, and Example Answer sections.
-    :param questions: List of question strings
-    :param answers:   List of user answer strings
-    :param feedbacks: List of raw feedback strings from grade_answer
-    :param title:     Title on the PDF cover page
-    :return:          BytesIO buffer with PDF data
-    """
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=letter)
-    styles = getSampleStyleSheet()
-    title_style = ParagraphStyle(name='TitleStyle', parent=styles['Title'], fontSize=20, spaceAfter=20)
-    grade_style = ParagraphStyle(name='GradeStyle', parent=styles['Heading3'], fontSize=14, spaceAfter=6)
-    question_style = ParagraphStyle(name='QuestionStyle', parent=styles['Heading2'], fontSize=14, spaceAfter=6)
-    answer_style = ParagraphStyle(name='AnswerStyle', parent=styles['BodyText'], fontSize=12, spaceAfter=4)
-    feedback_style = ParagraphStyle(name='FeedbackStyle', parent=styles['BodyText'], fontSize=12, textColor='red', spaceAfter=12)
-
-    story = []
-    story.append(Paragraph(f"<b>{title}</b>", title_style))
-    story.append(Spacer(1, 20))
-
-    for idx, (q, a, f_raw) in enumerate(zip(questions, answers, feedbacks), start=1):
-        # Question
-        story.append(Paragraph(f"Q{q}", question_style))
-        story.append(Spacer(1, 4))
-
-        # Extract Grade
-        grade_match = re.search(r"\*?Grade:?\s*(\d+/\d+)\*?", f_raw)
-        grade = grade_match.group(1) if grade_match else ""
-        # Clean raw feedback text
-        f_clean = re.sub(r"\*?Grade:?\s*\d+/\d+\*?", "", f_raw).strip()
-
-        # Split Feedback vs Example Answer
-        example_answer = ""
-        if "Example Answer:" in f_clean:
-            parts = f_clean.split("Example Answer:", 1)
-            feedback_text = parts[0].strip().lstrip(":").strip()
-            example_answer = parts[1].strip()
-        else:
-            feedback_text = f_clean
-
-        # User Answer Section
-        story.append(Paragraph(f"<b>Your Answer:</b> {a}", answer_style))
-        story.append(Spacer(1, 4))
-
-        # Grade Section
-        story.append(Paragraph(f"<b>Grade:</b> {grade}", grade_style))
-        story.append(Spacer(1, 4))
-
-        # Feedback Section
-        story.append(Paragraph(f"{feedback_text}", feedback_style))
-        story.append(Spacer(1, 4))
-
-        # Example Answer Section
-        if example_answer:
-            story.append(Paragraph(f"<b>Example Answer:</b> {example_answer}", feedback_style))
-            story.append(Spacer(1, 12))
-        else:
-            story.append(Spacer(1, 12))
 
     doc.build(story)
     buffer.seek(0)
