@@ -2,6 +2,10 @@ import os
 import io
 import pytest
 import fitz
+
+# ensure project root is in sys.path for imports
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
+
 from pdf_quiz_generator.PDF_extractor import (
     clean_text,
     is_copied_from_summary,
