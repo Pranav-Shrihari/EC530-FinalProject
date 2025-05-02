@@ -1,5 +1,7 @@
 import os
 import io
+import sys
+import pathlib
 import pytest
 import fitz
 
