@@ -26,6 +26,12 @@ A Streamlit-based tool to summarize PDF documents, generate quiz questions from 
 
 - openai
 
+## How to run the app
+Once you have cloned/downloaded the repository, you can run the following command in the command line to install all of the required libraries (ensure that you are in the right directory):
+<pre lang="markdown"> pip install -r requirements.txt </pre>
+After that, you can run the following command to initialize the app:
+<pre lang="markdown"> pdf_quiz_generator </pre>
+
 ## Contributing
 Contributions are welcome! Please follow the standard GitHub flow:
 
